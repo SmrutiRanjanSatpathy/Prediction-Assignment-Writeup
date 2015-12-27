@@ -1,0 +1,126 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Smruti Ranjan Satpathy"
+date: "December 26, 2015"
+output: html_document
+---
+
+### Summary.
+This analysis corresponds to the Project Assignment for the Practical Machine Learning course of the John Hopkins Data Science Specialization at Coursera. The project uses data from the Weight Lifting Exercises (WLE) Dataset (see http://groupware.les.inf.puc-rio.br/har and also the References section below.) According to the WLE website, six participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions, identified as classes A, B, C, D and E. Class A corresponds to a correct execution of the exercise, and the remaining five classes identify common mistakes in this weight lifting exercise. Several sensors were used to collect data about the quality of the exercise execution. The goal of this project is to obtain a prediction algorithm that takes such a set of sensor readings and correctly predicts the corresponding class (A to E).
+
+The following analysis uses a random forest prediction algorithm to accomplish this task, after some data cleaning. The results of the analysis confirm that the model provided by this algorithm achieves a high prediction accuracy (as indicated by several prediction quality indicators).
+
+### Discussion and Code for the Analysis.  
+#### Data File Loading and Initial Data Exploration.
+
+The project assignment includes two data files (in csv format), that can be downloaded from these links:
+
+1. [Training data: pml-training.csv.](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+2. [Testing data: pml-testing.csv.](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+The following code assumes that these data files are located in your R working directory. The pml-training.csv file contains both sensor data and execution type data, but the pml-testing.csv file does not contain execution type data. As an additional part of the assignment, we have to use the prediction algorithm trained on the data from the pml-testing.csv file, in order to predict the execution type for the data in the pml-testing.csv file.
+
+In this assignment there is no codebook for the data files. However, relevant information can be obtained from the sources cited in the references. In particular, we know that four types of sensors were used in the experiment, and we will see below that this is reflected in the names of many of the variables in the data set.
+
+Let us begin by reading the pml-training.csv file into R. An initial inspection of the data file (using e.g. a text editor or a spreadsheet program) shows that:
+
+1. The data columns in the file are separated by commas.
+2. There are many missing values. These missing values come in two versions: the usual NA value, but also as values of the form "#DIV/0!" (this is probably the result of an attempt to divide by zero in a spreadsheet).
+3. The header line contains the names of the variables in the data set.
+4. The first column is not really a variable, it just contains the row number.
+
+Taking all that into account, we read the csv into a data frame in R as follows:
+
+```{r,message=FALSE,warning=FALSE,error=FALSE,chase=TRUE}
+library(caret)
+library(rpart)
+library(randomForest)
+
+pml_training<-read.csv("./pml-training.csv",header=TRUE,na.strings=c("", "NA"))
+dim(pml_training)
+
+```
+
+#### PreProcessing of Data
+
+There are total 100 columns which have almost all the values are missing. 
+
+There is also a variable named "new_window" present in the dataset which is having very minimal variability or the uniqueness.
+
+Other variables like "X","user_name" and "timestamp" are not providing any meaningful information for predictions.
+
+So,We could get rid of all those variables.
+
+```{r, echo=FALSE,chase=TRUE}
+x<-colSums(is.na(pml_training))
+table(x)
+x<-names(x[x==0])
+pml_training<-pml_training[,x]
+
+subset(nearZeroVar(pml_training,saveMetrics = TRUE),nzv==TRUE)
+pml_training<-pml_training[,-6]
+
+pml_training<-pml_training[,-c(1,2,3,4,5)]
+
+dim(pml_training)
+
+```
+
+#### Data Spliting
+
+Now further whole dataset could be divided into train data and cross validation data in a ration of 70% and 30% respectively.
+
+```{r,echo=TRUE,chase=TRUE}
+intrain<-createDataPartition(pml_training$classe,p=0.7,list = FALSE)
+traindata<-pml_training[intrain,]
+dim(traindata)
+cvdata<-pml_training[-intrain,]
+dim(cvdata)
+
+```
+
+### Model Building and Validation
+
+#### PCA 
+
+As we are performing this test under random forsest, PCA will help us to reduce data size.
+
+```{r,echo=TRUE,chase=TRUE}
+
+cordata<-cor(traindata[,-54])
+which(cordata>0.8,arr.ind=TRUE)
+
+df<-preProcess(traindata[,-54],method = "pca")
+
+pcatraindata<-predict(df,traindata)
+
+```
+
+#### Traing Model 
+
+Now we could train the model
+
+
+```{r,echo=TRUE,chase=TRUE,message=FALSE,warning=FALSE,error=FALSE,results="hide"}
+
+fit<-train(classe~.,data = pcatraindata,method="gbm")
+```
+
+#### Testing on Cross Validation set 
+
+Testing in cross validation set.
+
+```{r,echo=TRUE,chase=TRUE}
+
+pcacvdata<-predict(df,cvdata)
+preds <- predict(fit, newdata=pcacvdata)
+confusionMatrix(preds,cvdata$classe)
+
+```
+
+Both the accuracy and the Cohen's kappa indicator of concordance indicate that the predictor seems to have a low out of sample error rate.
+
+### Notes.
+1. The inclusion of the time-of-measure related variables (columns 3 to 7) can be considered. However, this only results in a small increase of prediction accuracy and the decission was made to exclude those variables to avoid a possible overfitting of the predictor to the training data.
+
+2. Preprocessing with principal Components Analysis (PCA) could be used to reduce the number of variables in the predictor, in the hopes of increasing the performance of the predictor. However, keeping the original variables allows for the analysis of the relative variable importance.
